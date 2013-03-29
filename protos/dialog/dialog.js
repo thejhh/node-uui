@@ -15,13 +15,20 @@ function _parseArguments(args) {
 	// Returns an object with presentation of the arguments
 }
 
+/* Private qualifier helper for widgets */
+function isPrivate(value) {
+	return function(w) {
+		return {'private': (value || (value === undefined)) ? true : false};
+	};
+}
+
 /* Generic implementation of a dialog widget */
 function Dialog() {
 	var args = _parseArguments(arguments);
 };
 
 /* Generic presentation of a dialog in an app */
-var dialog = Dialog('Sample dialog', [Field('Username'), Field('Password', {'private': true})] );
+var dialog = Dialog('Sample dialog', [Field('Username'), Field('Password', isPrivate())] );
 
 /* Implementation of a dialog in console */
 
