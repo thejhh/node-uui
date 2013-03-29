@@ -1,7 +1,7 @@
 /* Prototype UUI application */
 
 /* Generic implementation of a dialog widget */
-Dialog = function(label, fn) {
+function Dialog(label, fn) {
 
 };
 
