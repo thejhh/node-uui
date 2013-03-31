@@ -26,20 +26,32 @@ function Dialog() {
 	var args = _parseArguments(arguments);
 };
 
-/* Implementation of a shell for widget(s) in HTML/CSS/JS */
-function JQueryShell() {
+/* Implementation of a shell for widget(s) in standard text console */
+function TerminalShell() {
 
 }
 
+/* Start widget(s) in the shell
+ * @params One or more widget objects or arrays of them
+ * @returns 
+ */
+TerminalShell.prototype.start = function() {
+	var args = _parseArguments(arguments);
+	
+};
+
 /* Using dialogs with HTML shell and jquery */
 /* Please note! These functions aren't taking positionals! :-) */
-var dialog = Dialog('#login', 'Sample login dialog', [Field('#username', 'Username'), Field('#password', 'Password', {'private':true})] );
+var login = Dialog('#login', 'Sample login dialog', [
+	Field('#username', 'Username'),
+	Field('#password', 'Password', {'private':true})
+]);
 
-var shell = JQueryShell('#shell');
-shell.render(dialog);
+var shell = TerminalShell();
+shell.start(login);
 
-dialog.on('submit', function(data) {
-	alert("Submitted data was: " + JSON.stringify(data) );
+login.on('submit', function(data) {
+	console.log("Submitted data was: " + JSON.stringify(data) );
 });
 
 /* */
