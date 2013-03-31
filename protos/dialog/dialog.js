@@ -8,6 +8,8 @@ function _parseArguments(args) {
 	
 	// Array of child members for the widget, like: [Field('Username'), Field('email')]
 	
+	// Widget object that's derived from Widget (like Dialog, Field, etc): will be added as child.
+	
 	// Object with additional configuration settings for the widget
 	
 	// The builder function of the widget, like: function(w) { w.label("Sample Dialog"); return [child_a, child_b]; }
@@ -15,21 +17,29 @@ function _parseArguments(args) {
 	// Returns an object with presentation of the arguments
 }
 
-/* Private qualifier helper for widgets */
-function isPrivate(value) {
-	return function(w) {
-		return {'private': (value || (value === undefined)) ? true : false};
-	};
-}
+/** Widget base class */
+function Widget() {
+};
 
-/* Generic implementation of a dialog widget */
+/* Generic implementation of a dialog widget, derived from Widget */
 function Dialog() {
 	var args = _parseArguments(arguments);
 };
 
-/* Generic presentation of a dialog in an app */
-var dialog = Dialog('Sample dialog', [Field('Username'), Field('Password', isPrivate())] );
+/* Implementation of a shell for widget(s) in HTML/CSS/JS */
+function JQueryShell() {
 
-/* Implementation of a dialog in console */
+}
+
+/* Using dialogs with HTML shell and jquery */
+/* Please note! These functions aren't taking positionals! :-) */
+var dialog = Dialog('#login', 'Sample login dialog', [Field('#username', 'Username'), Field('#password', 'Password', {'private':true})] );
+
+var shell = JQueryShell('#shell');
+shell.render(dialog);
+
+dialog.on('submit', function(data) {
+	alert("Submitted data was: " + JSON.stringify(data) );
+});
 
 /* */
