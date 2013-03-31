@@ -31,27 +31,34 @@ function TerminalShell() {
 
 }
 
-/* Start widget(s) in the shell
+/* Start one or more widget(s) using the standard console terminal prompt
  * @params One or more widget objects or arrays of them
- * @returns 
+ * @returns Promise with all data from possible submits.
  */
 TerminalShell.prototype.start = function() {
 	var args = _parseArguments(arguments);
 	
 };
 
-/* Using dialogs with HTML shell and jquery */
-/* Please note! These functions aren't taking positionals! :-) */
+/* Test code */
+
+// Please note! These functions aren't taking positionals -- you can place the arguments in any order! So don't worry! :-)
+
+// Our login dialog
 var login = Dialog('#login', 'Sample login dialog', [
 	Field('#username', 'Username'),
 	Field('#password', 'Password', {'private':true})
 ]);
 
-var shell = TerminalShell();
-shell.start(login);
-
+// Here's how we can handle the data
 login.on('submit', function(data) {
 	console.log("Submitted data was: " + JSON.stringify(data) );
+});
+
+// Now we will start the dialog in the terminal prompt
+var shell = TerminalShell();
+shell.start(login).then(function(data) {
+	console.log("User " + data.username + " logging in with password " + data.password);
 });
 
 /* */
