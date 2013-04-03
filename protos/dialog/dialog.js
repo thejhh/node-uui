@@ -1,41 +1,116 @@
 /* Prototype UUI application */
 
+var Q = require("q");
 var util = require("util");
 var events = require("events");
 
 /** Widget base class */
 function Widget() {
-	events.EventEmitter.call(this);
-	this._members = [];
+	var self = this;
+	events.EventEmitter.call(self);
+	self._members = [];
+	self._defer = undefined;
 }
 
 util.inherits(Widget, events.EventEmitter);
 
 /** Set or get widget id */
 Widget.prototype.id = function(id) {
-	if(id !== undefined) this._id = id;
-	return this._id;
-}
+	var self = this;
+	if(id !== undefined) {
+		self._id = id;
+	}
+	return self._id;
+};
 
 /** Set or get widget label */
 Widget.prototype.label = function(label) {
-	if(label !== undefined) this._label = label;
-	return this._label;
-}
+	var self = this;
+	if(label !== undefined) {
+		self._label = label;
+	}
+	return self._label;
+};
 
 /** Add a new child object */
 Widget.prototype.push = function() {
+	var self = this;
 	var args = Array.prototype.slice.call(arguments);
-	this._members.push.apply(this._members, args);
-}
+	self._members.push.apply(self._members, args);
+};
+
+/** Start the widget
+ * @returns Promise for the widget
+ */
+Widget.prototype.start = function() {
+	var self = this;
+	if(self._defer === undefined) {
+		self._defer = Q.defer();
+		self.emit('started', self);
+	}
+	return self._defer.promise;
+};
 
 /** Shell base class */
 function Shell() {
-	events.EventEmitter.call(this);
-	this._members = [];
+	var self = this;
+	events.EventEmitter.call(self);
+	self._widgets = []; // All started widgets
 }
 
 util.inherits(Shell, events.EventEmitter);
+
+/* Start one widget in the shell
+ * @params w Widget object to start
+ * @returns Promise for widget
+ */
+Shell.prototype._start = function(w) {
+	var self = this;
+	return Q.fcall(function() {
+		if(!(w instanceof Widget)) {
+			throw new TypeError(".start called with non Widget argument!");
+		}
+		self._widgets.push(w);
+		self.emit('started', w);
+		self.emit('Widget:started', w);
+		return w.start();
+	});
+};
+
+/* Start one or more widget(s) in the shell
+ * @params One or more widget objects or arrays of them
+ * @returns Promise for all widgets
+ */
+Shell.prototype.start = function() {
+	var self = this;
+	var args = Array.prototype.slice.call(arguments);
+	return Q.fcall(function() {
+
+		var widgets = [];
+		args.forEach(function(arg) {
+			if(arg && (arg instanceof Widget)) {
+				widgets.push(arg);
+			} else if(arg && (arg instanceof Array)) {
+				arg.forEach(function(w) {
+					if(w && (w instanceof Widget)) {
+						widgets.push(w);
+					} else {
+						throw new TypeError("Wrong type for widget inside an array (" + w + ")");
+					}
+				});
+			} else {
+				throw new TypeError("Argument unknown type (" + arg + ")");
+			}
+		}); // args.forEach
+		
+		var promises = [];
+		widgets.forEach(function(w) {
+			promises.push( self._start(w) );
+		});
+		return Q.allResolved(promises);
+		
+	}); // Q.fcall
+}; // Shell.prototype.start
 
 /* Parse widget arguments */
 function _smart_widget_creator(obj, args) {
@@ -71,6 +146,8 @@ function _smart_widget_creator(obj, args) {
 		// The builder function of the widget, like: function(w) { w.label("Sample Dialog"); return [child_a, child_b]; }
 		} else if( arg && (typeof arg === 'function') ) {
 			_smart_widget_creator(obj, arg(obj));
+		} else {
+			throw new TypeError("Argument unknown type (" + arg + ")");
 		}
 
 	});
@@ -81,38 +158,76 @@ function _smart_widget_creator(obj, args) {
 
 /* Generic implementation of a dialog widget, derived from Widget */
 function Dialog() {
+	var self = this;
 	var args = Array.prototype.slice.call(arguments);
-	Widget.call(this);
-	_smart_widget_creator(this, args);
-};
+	if(!(self instanceof Dialog)) {
+		return Dialog.create.apply(Dialog, args);
+	} else {
+		Widget.call(self);
+	}
+}
 
 util.inherits(Dialog, Widget);
 
+/** Create object using smart widget creator */
+Dialog.create = function() {
+	var args = Array.prototype.slice.call(arguments);
+	var obj = new Dialog();
+	_smart_widget_creator(obj, args);
+	return obj;
+};
+
 /* Generic implementation of a field widget, derived from Widget */
 function Field() {
+	var self = this;
 	var args = Array.prototype.slice.call(arguments);
-	Widget.call(this);
-	_smart_widget_creator(this, args);
-};
+	if(!(self instanceof Field)) {
+		return Field.create.apply(Field, args);
+	} else {
+		Widget.call(self);
+	}
+}
 
 util.inherits(Field, Widget);
 
+/** Create object using smart widget creator */
+Field.create = function() {
+	var args = Array.prototype.slice.call(arguments);
+	var obj = new Field();
+	_smart_widget_creator(obj, args);
+	return obj;
+};
+
 /* Implementation of a shell for widget(s) in standard text console */
 function TerminalShell() {
+	var self = this;
 	var args = Array.prototype.slice.call(arguments);
-	Shell.call(this);
-	//_smart_widget_creator(this, args);
+	if(!(self instanceof TerminalShell)) {
+		return TerminalShell.create.apply(TerminalShell, args);
+	} else {
+		Shell.call(self);
+	}
 }
 
 util.inherits(TerminalShell, Shell);
 
-/* Start one or more widget(s) using the standard console terminal prompt
- * @params One or more widget objects or arrays of them
- * @returns Promise with all data from possible submits.
- */
-TerminalShell.prototype.run = function() {
-	//var args = Array.prototype.slice.call(arguments);
-	//_smart_widget_creator(this, args);
+/** Create object using smart widget creator */
+TerminalShell.create = function() {
+	var args = Array.prototype.slice.call(arguments);
+	var obj = new TerminalShell();
+	//_smart_widget_creator(obj, args);
+
+	var readline = require('readline');
+	var rl = readline.createInterface({
+		input: process.stdin,
+		output: process.stdout
+	});
+	
+	rl.question('What is your favorite food?', function(answer) {
+		console.log('Oh, so your favorite food is ' + answer);
+	});
+
+	return obj;
 };
 
 /* Test code */
@@ -120,9 +235,9 @@ TerminalShell.prototype.run = function() {
 // Please note! These functions aren't taking positionals -- you can place the arguments in any order! So don't worry! :-)
 
 // Our login dialog
-var login = Dialog('#login', 'Sample login dialog', [
-	Field('#username', 'Username'),
-	Field('#password', 'Password', {'private':true})
+var login = Dialog.create('#login', 'Sample login dialog', [
+	Field.create('#username', 'Username'),
+	Field.create('#password', 'Password', {'private':true})
 ]);
 
 // Here's how we can handle the data
@@ -131,9 +246,12 @@ login.on('submit', function(data) {
 });
 
 // Now we will start the dialog in the terminal prompt
-var shell = TerminalShell();
-shell.run(login).then(function(data) {
+var errors = require('prettified').errors;
+var shell = TerminalShell.create();
+shell.start(login).then(function(data) {
 	console.log("User " + data.username + " logging in with password " + data.password);
-});
+}).fail(function(err) {
+	 errors.print(err);
+}).done();
 
 /* */
