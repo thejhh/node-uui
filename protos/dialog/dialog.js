@@ -19,6 +19,11 @@ Widget.prototype.id = function(id) {
 	var self = this;
 	if(id !== undefined) {
 		self._id = id;
+		self.emit('changed', self);
+		self.emit('id:changed', self);
+	}
+	if(self._id === undefined) {
+		self._id = self.label().replace(/[^a-z0-9_]/g, "_");
 	}
 	return self._id;
 };
@@ -28,6 +33,8 @@ Widget.prototype.label = function(label) {
 	var self = this;
 	if(label !== undefined) {
 		self._label = label;
+		self.emit('changed', self);
+		self.emit('label:changed', self);
 	}
 	return self._label;
 };
@@ -49,6 +56,17 @@ Widget.prototype.start = function() {
 		self.emit('started', self);
 	}
 	return self._defer.promise;
+};
+
+/** Start the widget
+ * @returns Promise for the widget
+ */
+Widget.prototype.stop = function(data) {
+	var self = this;
+	var p = self.start();
+	self._defer.resolve(data);
+	self.emit('stopped', self);
+	return p;
 };
 
 /** Shell base class */
@@ -107,7 +125,23 @@ Shell.prototype.start = function() {
 		widgets.forEach(function(w) {
 			promises.push( self._start(w) );
 		});
-		return Q.allResolved(promises);
+
+		return Q.allResolved(promises).then(function(promises) {
+			var values = [];
+			var errors = [];
+			promises.forEach(function (promise) {
+				if (promise.isFulfilled()) {
+					values.push(promise.valueOf());
+				} else {
+					errors.push(promise.valueOf().exception);
+				}
+			});
+			if( (values.length === 1) && (errors.length === 0) ) {
+				return values.shift();
+			} else {
+				return {'values':values, 'errors':errors};
+			}
+		});
 		
 	}); // Q.fcall
 }; // Shell.prototype.start
@@ -177,6 +211,22 @@ Dialog.create = function() {
 	return obj;
 };
 
+/** Submit the widget
+ * @returns Promise for the widget
+ */
+Widget.prototype.submit = function() {
+	var self = this;
+	var data = {};
+	self._members.forEach(function(w) {
+		var id = w.id();
+		while(data[id] !== undefined) {
+			id += '_';
+		}
+		data[id] = w.value();
+	});
+	return self.stop(data);
+};
+
 /* Generic implementation of a field widget, derived from Widget */
 function Field() {
 	var self = this;
@@ -196,6 +246,17 @@ Field.create = function() {
 	var obj = new Field();
 	_smart_widget_creator(obj, args);
 	return obj;
+};
+
+/** Set or get field value */
+Field.prototype.value = function(value) {
+	var self = this;
+	if(value !== undefined) {
+		self._value = value;
+		self.emit('changed', self);
+		self.emit('value:changed', self);
+	}
+	return self._value;
 };
 
 /* Implementation of a shell for widget(s) in standard text console */
@@ -223,9 +284,82 @@ TerminalShell.create = function() {
 		output: process.stdout
 	});
 	
-	rl.question('What is your favorite food?', function(answer) {
-		console.log('Oh, so your favorite food is ' + answer);
+	var queue = [];
+	obj.on('Widget:started', function(w) {
+		queue.push(w);
 	});
+	
+	function do_Field(w) {
+		var defer = Q.defer();
+		var value = w.value();
+		var q = w.label() + ( (value === undefined) ? '' : ' [' + value + ']' ) + ': ';
+		if(value) {
+			rl.write(value);
+		}
+		rl.question(q, function(answer) {
+			w.value(answer);
+			defer.resolve(w);
+		});
+		return defer.promise;
+	}
+	
+	function do_Dialog(d) {
+		console.log('+-- ' + d.label() + ' --+');
+		return Q.fcall(function() {
+			
+			var funcs = [];
+			d._members.forEach(function(w) {
+				funcs.push(function() {
+					if(w instanceof Field) {
+						return do_Field(w);
+					} else {
+						return Q.fcall(function() { throw new TypeError("w is unknown type"); });
+					}
+				});
+			});
+
+			var result = Q.resolve();
+			funcs.forEach(function (f) {
+				result = result.then(f);
+			});
+			return result;
+		}).fin(function() {
+			d.submit();
+			console.log('+---' + d.label().replace(/./g, "-") + "---+\n");
+		});
+	}
+	
+	function do_step() {
+		return Q.fcall(function() {
+			var w = queue.shift();
+			if(!w) return;
+			
+			if(w instanceof Dialog) {
+				return do_Dialog(w);
+			} else if(w instanceof Field) {
+				return do_Field(w);
+			}
+
+		}); // Q.fcall
+	} // do_step
+	
+	function do_next() {
+		do_step().then(function() {
+			if(queue.length === 0) {
+				setTimeout(function() {
+					do_next();
+				}, 100);
+			} else {
+				setImmediate(function() {
+					do_next();
+				});
+			}
+		}).fail(function(err) {
+			console.error('Error: ' + err);
+		}).done();
+	}
+
+	do_next();
 
 	return obj;
 };
@@ -249,7 +383,7 @@ login.on('submit', function(data) {
 var errors = require('prettified').errors;
 var shell = TerminalShell.create();
 shell.start(login).then(function(data) {
-	console.log("User " + data.username + " logging in with password " + data.password);
+	console.log("User '" + data.username + "' logging in with password '" + data.password + "'");
 }).fail(function(err) {
 	 errors.print(err);
 }).done();
